@@ -69,26 +69,53 @@ jobs:
             | grep -E "LOGIN_OK|Connecting to|Connection established|Remote protocol|Offering public key|Server accepts key|Authentications that can continue|Permission denied|Authenticated to|Connection refused|timed out|Invalid|^[a-z-]+$" || true
           rm -f /tmp/deploy_key
 
+      - name: Check app secrets
+        env:
+          CONNECTOR_ENV: ${{ secrets.CONNECTOR_ENV }}
+          POYNT_PRIVATE_KEY_PEM: ${{ secrets.POYNT_PRIVATE_KEY_PEM }}
+        run: |
+          [ -n "$CONNECTOR_ENV" ] || { echo "FAIL  Missing secret CONNECTOR_ENV (nội dung file .env)"; exit 1; }
+          [ -n "$POYNT_PRIVATE_KEY_PEM" ] || { echo "FAIL  Missing secret POYNT_PRIVATE_KEY_PEM (private key app Poynt)"; exit 1; }
+          printf '%s\n' "$POYNT_PRIVATE_KEY_PEM" | head -1 | grep -q "^-----BEGIN .*PRIVATE KEY-----$" \
+            || { echo "FAIL  POYNT_PRIVATE_KEY_PEM must start with -----BEGIN ... PRIVATE KEY-----"; exit 1; }
+          echo "OK    CONNECTOR_ENV: $(printf '%s\n' "$CONNECTOR_ENV" | grep -c '=') variables"
+          echo "OK    POYNT_PRIVATE_KEY_PEM"
+
       - name: SSH into Server & Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.GCP_SERVER_HOST }}
           username: ${{ secrets.GCP_SERVER_USER }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-          debug: true
 
-          # Trên server cần sẵn: /opt/nas/godaddy-connector/.env và keys/private.pem (xem README)
+          # .env và private key Poynt lấy từ GitHub Secrets (CONNECTOR_ENV, POYNT_PRIVATE_KEY_PEM),
+          # ghi ra server mỗi lần deploy — không nằm trong image, không cần tạo tay trên server.
           script: |
+            set -e
+            APP_DIR="$HOME/nas/godaddy-connector"
+            mkdir -p "$APP_DIR/keys" "$APP_DIR/data"
+            umask 077
+            cat > "$APP_DIR/.env" <<'CONNECTOR_ENV_EOF'
+            ${{ secrets.CONNECTOR_ENV }}
+            CONNECTOR_ENV_EOF
+            cat > "$APP_DIR/keys/private.pem" <<'POYNT_KEY_EOF'
+            ${{ secrets.POYNT_PRIVATE_KEY_PEM }}
+            POYNT_KEY_EOF
+            # bỏ thụt đầu dòng (nếu có) do YAML
+            sed -i 's/^[[:space:]]*//' "$APP_DIR/.env" "$APP_DIR/keys/private.pem"
+            chmod 644 "$APP_DIR/keys/private.pem"
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
             docker network inspect nas-net >/dev/null 2>&1 || docker network create nas-net
-            mkdir -p /opt/nas/godaddy-connector/keys /opt/nas/godaddy-connector/data 2>/dev/null || sudo mkdir -p /opt/nas/godaddy-connector/keys /opt/nas/godaddy-connector/data
-            test -f /opt/nas/godaddy-connector/.env || { echo "Missing /opt/nas/godaddy-connector/.env on server"; exit 1; }
             docker stop nas-godaddy-connector-service || true
             docker rm nas-godaddy-connector-service || true
-            docker run -d --restart=always --pull=always --name nas-godaddy-connector-service --network nas-net -p 6009:6009 \
-              --env-file /opt/nas/godaddy-connector/.env \
+            docker run -d --restart=always --name nas-godaddy-connector-service --network nas-net -p 6009:6009 \
+              --env-file "$APP_DIR/.env" \
               -e PORT=6009 \
-              -v /opt/nas/godaddy-connector/keys:/app/keys:ro \
-              -v /opt/nas/godaddy-connector/data:/app/data \
+              -e POYNT_PRIVATE_KEY_PATH=./keys/private.pem \
+              -v "$APP_DIR/keys:/app/keys:ro" \
+              -v "$APP_DIR/data:/app/data" \
               ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
+            sleep 3
+            docker logs --tail 5 nas-godaddy-connector-service
+            curl -fsS localhost:6009/health && echo " <- health OK"
