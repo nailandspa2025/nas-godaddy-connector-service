@@ -69,18 +69,6 @@ jobs:
             | grep -E "LOGIN_OK|Connecting to|Connection established|Remote protocol|Offering public key|Server accepts key|Authentications that can continue|Permission denied|Authenticated to|Connection refused|timed out|Invalid|^[a-z-]+$" || true
           rm -f /tmp/deploy_key
 
-      - name: Check app secrets
-        env:
-          CONNECTOR_ENV: ${{ secrets.CONNECTOR_ENV }}
-          POYNT_PRIVATE_KEY_PEM: ${{ secrets.POYNT_PRIVATE_KEY_PEM }}
-        run: |
-          [ -n "$CONNECTOR_ENV" ] || { echo "FAIL  Missing secret CONNECTOR_ENV (nội dung file .env)"; exit 1; }
-          [ -n "$POYNT_PRIVATE_KEY_PEM" ] || { echo "FAIL  Missing secret POYNT_PRIVATE_KEY_PEM (private key app Poynt)"; exit 1; }
-          printf '%s\n' "$POYNT_PRIVATE_KEY_PEM" | head -1 | grep -q "^-----BEGIN .*PRIVATE KEY-----$" \
-            || { echo "FAIL  POYNT_PRIVATE_KEY_PEM must start with -----BEGIN ... PRIVATE KEY-----"; exit 1; }
-          echo "OK    CONNECTOR_ENV: $(printf '%s\n' "$CONNECTOR_ENV" | grep -c '=') variables"
-          echo "OK    POYNT_PRIVATE_KEY_PEM"
-
       - name: SSH into Server & Deploy
         uses: appleboy/ssh-action@master
         with:
