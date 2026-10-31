@@ -37,12 +37,45 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-push-deploy
     steps:
+      # In ra lý do SSH lỗi cụ thể (không in nội dung secret)
+      - name: Diagnose SSH secrets
+        continue-on-error: true
+        env:
+          SSH_HOST: ${{ secrets.GCP_SERVER_HOST }}
+          SSH_USER: ${{ secrets.GCP_SERVER_USER }}
+          SSH_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+        run: |
+          check() { if eval "$2"; then echo "OK    $1"; else echo "FAIL  $1"; fi; }
+          echo "=== Secrets ==="
+          check "GCP_SERVER_HOST is set"                 '[ -n "$SSH_HOST" ]'
+          check "GCP_SERVER_HOST == 34.28.35.249"        '[ "$SSH_HOST" = "34.28.35.249" ]'
+          check "GCP_SERVER_USER is set"                 '[ -n "$SSH_USER" ]'
+          check "GCP_SERVER_USER == salesusa"            '[ "$SSH_USER" = "salesusa" ]'
+          check "GCP_SERVER_USER has no spaces/newlines" '! printf %s "$SSH_USER" | grep -q "[[:space:]]"'
+          check "GCP_SERVER_USER is not an email"        '! printf %s "$SSH_USER" | grep -q @'
+          echo "GCP_SERVER_USER length: ${#SSH_USER}"
+          check "GCP_SSH_PRIVATE_KEY is set"             '[ -n "$SSH_KEY" ]'
+          printf '%s\n' "$SSH_KEY" > /tmp/deploy_key && chmod 600 /tmp/deploy_key
+          check "Key starts with -----BEGIN"             'head -1 /tmp/deploy_key | grep -q "^-----BEGIN .*PRIVATE KEY-----$"'
+          check "Key ends with -----END"                 'grep -q "^-----END .*PRIVATE KEY-----$" /tmp/deploy_key'
+          check "Key is not a public key (.pub)"         '! grep -q "^ssh-" /tmp/deploy_key'
+          check "Key has no passphrase / is parseable"   'ssh-keygen -y -P "" -f /tmp/deploy_key >/dev/null 2>&1'
+          echo "Key lines: $(wc -l < /tmp/deploy_key)"
+          echo "Key fingerprint (so với server: ssh-keygen -lf ~/.ssh/authorized_keys):"
+          ssh-keygen -lf /tmp/deploy_key 2>&1 || true
+          echo "=== SSH login test ==="
+          ssh -i /tmp/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=15 -v \
+            "$SSH_USER@$SSH_HOST" 'echo LOGIN_OK as $(whoami); docker ps --format "{{.Names}}" | head -3' 2>&1 \
+            | grep -E "LOGIN_OK|Connecting to|Connection established|Remote protocol|Offering public key|Server accepts key|Authentications that can continue|Permission denied|Authenticated to|Connection refused|timed out|Invalid|^[a-z-]+$" || true
+          rm -f /tmp/deploy_key
+
       - name: SSH into Server & Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.GCP_SERVER_HOST }}
           username: ${{ secrets.GCP_SERVER_USER }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          debug: true
 
           # Trên server cần sẵn: /opt/nas/godaddy-connector/.env và keys/private.pem (xem README)
           script: |
