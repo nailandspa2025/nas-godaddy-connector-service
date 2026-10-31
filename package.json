@@ -1,7 +1,7 @@
 {
-  "name": "nas-paylink",
+  "name": "nas-godaddy-connector-service",
   "version": "1.0.0",
-  "description": "Paylink service on Poynt Cloud app + Poynt Collect (GoDaddy Payments)",
+  "description": "GoDaddy Payments (Poynt) connector: paylinks + charge API for NAS",
   "private": true,
   "type": "commonjs",
   "main": "dist/server.js",

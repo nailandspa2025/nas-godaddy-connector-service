@@ -44,4 +44,4 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: err.message, details: err.details });
 });
 
-app.listen(config.port, () => console.log(`nas-paylink listening on ${config.publicBaseUrl}`));
+app.listen(config.port, () => console.log(`nas-godaddy-connector-service listening on ${config.publicBaseUrl}`));

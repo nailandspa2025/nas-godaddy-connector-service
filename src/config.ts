@@ -17,7 +17,8 @@ export const config = {
   /** Trang thanh toán (UI nằm ở nas-portal), link khách mở = {paymentPageUrl}/{id} */
   paymentPageUrl: (process.env.PAYMENT_PAGE_URL || 'http://localhost:5173/pay').replace(/\/$/, ''),
   /** Origin được phép gọi /api/pay/* từ trình duyệt (nas-portal), phân tách bằng dấu phẩy */
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173')
+  // Đặt CORS_ORIGINS= (rỗng) khi chạy sau nas-gateway-api: gateway đã thêm CORS, tránh trùng header
+  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
