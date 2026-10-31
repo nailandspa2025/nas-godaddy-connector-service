@@ -22,6 +22,9 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  /** PostgreSQL, vd postgresql://postgres:***@postgres_db:5432/Nas-GoDaddy (postgres_db trên network nas-net) */
+  databaseUrl: process.env.DATABASE_URL || '',
+  /** File JSON cũ — chỉ dùng để import một lần vào DB khi bảng còn trống */
   dataFile: path.resolve(process.cwd(), process.env.PAYLINK_DATA_FILE || './data/paylinks.json'),
   /** nas-catalog-api: lấy cấu hình Poynt (BusinessId/StoreId/DeviceId) theo store NAS */
   catalogApiUrl: (process.env.CATALOG_API_URL || '').replace(/\/$/, ''),
@@ -39,6 +42,7 @@ export const config = {
 
 export function assertConfig(): void {
   const missing: string[] = [];
+  if (!config.databaseUrl) missing.push('DATABASE_URL');
   if (!config.poynt.applicationId) missing.push('POYNT_APPLICATION_ID');
   if (!config.poynt.privateKey) missing.push('POYNT_PRIVATE_KEY / POYNT_PRIVATE_KEY_PATH');
   if (!config.catalogApiUrl && !config.poynt.businessId) missing.push('CATALOG_API_URL hoặc POYNT_BUSINESS_ID');

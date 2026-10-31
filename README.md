@@ -15,6 +15,7 @@ với số tiền lưu trong paylink (không lấy số tiền từ client).
 npm install
 cp .env.example .env        # điền POYNT_BUSINESS_ID (+ storeId/deviceId nếu muốn)
 # đặt private key của app vào ./keys/private.pem
+# DATABASE_URL=postgresql://postgres:<pw>@localhost:5432/Nas-GoDaddy  (database + bảng tự tạo khi start)
 npm run token               # kiểm tra: lấy access token + liệt kê store/device
 npm run dev                 # http://localhost:3100
 ```
@@ -57,7 +58,8 @@ src/config.ts           đọc .env + private key
 src/poynt/auth.ts       self-signed JWT (RS256) → POST /token, cache token
 src/poynt/client.ts     HTTP client, retry 1 lần khi 401
 src/poynt/service.ts    resolve store/device, charge nonce
-src/paylink/store.ts    lưu paylink vào data/paylinks.json (demo)
+src/db.ts               kết nối PostgreSQL (DATABASE_URL), tự tạo database + bảng paylinks
+src/paylink/store.ts    lưu paylink vào PostgreSQL (bảng paylinks)
 src/paylink/routes.ts   API admin + public
 scripts/token.ts        kiểm tra cấu hình
 ```
@@ -71,7 +73,8 @@ scripts/token.ts        kiểm tra cấu hình
 
 ## Production checklist
 
-- Thay `data/paylinks.json` bằng database (store hiện tại không an toàn khi chạy nhiều instance).
+- `DATABASE_URL` trỏ tới Postgres (trên server: `postgresql://postgres:<pw>@postgres_db:5432/Nas-GoDaddy`, network `nas-net`).
+  Lần start đầu, nếu bảng `paylinks` trống mà có `PAYLINK_DATA_FILE` (data/paylinks.json cũ) thì dữ liệu được import một lần.
 - Bật `ADMIN_API_KEY`, chạy sau HTTPS. Đặt `PAYMENT_PAGE_URL` = `https://<portal>/pay` và `CORS_ORIGINS` = domain portal.
 - Thêm webhook Poynt (`TRANSACTION_*`) để đối soát trạng thái thay vì chỉ dựa vào response charge.
 - Không commit `.env` và `keys/`.

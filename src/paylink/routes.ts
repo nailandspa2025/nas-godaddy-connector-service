@@ -46,40 +46,40 @@ adminRouter.post('/', async (req, res, next) => {
   } catch (e) {
     return next(e);
   }
-  const p = store.create({ amount, currency, description: String(description), reference, expiresAt, nasStoreId, callbackUrl: callbackUrl || undefined });
+  const p = await store.create({ amount, currency, description: String(description), reference, expiresAt, nasStoreId, callbackUrl: callbackUrl || undefined });
   res.status(201).json(withUrl(p));
 });
 
-adminRouter.get('/', (_req, res) => res.json(store.list().map(withUrl)));
+adminRouter.get('/', async (_req, res) => res.json((await store.list()).map(withUrl)));
 
-adminRouter.get('/:id', (req, res) => {
-  const p = store.get(req.params.id);
+adminRouter.get('/:id', async (req, res) => {
+  const p = await store.get(req.params.id);
   return p ? res.json(withUrl(p)) : res.status(404).json({ error: 'Payment link not found' });
 });
 
 /** Gửi lại callback (vd khi order-api từng lỗi). */
-adminRouter.post('/:id/callback', (req, res) => {
-  const p = store.get(req.params.id);
+adminRouter.post('/:id/callback', async (req, res) => {
+  const p = await store.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   if (p.status !== 'PAID') return res.status(409).json({ error: `Payment link is ${p.status}` });
   if (!p.callbackUrl) return res.status(400).json({ error: 'Payment link has no callbackUrl' });
-  store.update(p.id, { callbackStatus: undefined });
+  await store.update(p.id, { callbackStatus: undefined });
   void notifyPaid(p.id);
   res.status(202).json({ queued: true });
 });
 
-adminRouter.post('/:id/cancel', (req, res) => {
-  const p = store.get(req.params.id);
+adminRouter.post('/:id/cancel', async (req, res) => {
+  const p = await store.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   if (p.status !== 'ACTIVE') return res.status(409).json({ error: `Payment link is ${p.status}` });
-  res.json(withUrl(store.update(p.id, { status: 'CANCELLED' })));
+  res.json(withUrl(await store.update(p.id, { status: 'CANCELLED' })));
 });
 
 export const publicRouter = Router();
 
 /** Thông tin hiển thị cho trang thanh toán (không lộ dữ liệu nội bộ). */
 publicRouter.get('/:id', async (req, res, next) => {
-  const p = store.get(req.params.id);
+  const p = await store.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   let merchant: Merchant;
   let poyntStoreId: string | null;
@@ -111,7 +111,7 @@ publicRouter.get('/:id', async (req, res, next) => {
 /** Khách thanh toán: nhận nonce từ Poynt Collect, số tiền lấy từ paylink phía server. */
 publicRouter.post('/:id/pay', async (req, res, next) => {
   const id = req.params.id;
-  const p = store.get(id);
+  const p = await store.get(id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   if (p.status !== 'ACTIVE') return res.status(409).json({ error: `This payment link is already ${p.status.toLowerCase()}` });
   if (store.isExpired(p)) return res.status(410).json({ error: 'This payment link has expired' });
@@ -121,8 +121,7 @@ publicRouter.post('/:id/pay', async (req, res, next) => {
 
   charging.add(id);
   try {
-    const attempt = p.attempts + 1;
-    store.update(id, { attempts: attempt });
+    const attempt = await store.nextAttempt(id);
     const merchant = await merchantOf(p);
     const txn = await chargeNonce(merchant, {
       nonce,
@@ -134,7 +133,7 @@ publicRouter.post('/:id/pay', async (req, res, next) => {
     });
     const approved = ['CAPTURED', 'AUTHORIZED'].includes(txn?.status);
     if (approved) {
-      store.update(id, { status: 'PAID', paidAt: new Date().toISOString(), transactionId: txn.id });
+      await store.update(id, { status: 'PAID', paidAt: new Date().toISOString(), transactionId: txn.id });
       void notifyPaid(id); // chạy nền, không chặn response cho khách
     }
     res.status(approved ? 200 : 402).json({

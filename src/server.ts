@@ -4,6 +4,7 @@ import { adminRouter, publicRouter } from './paylink/routes';
 import { getPoyntMerchant } from './catalog/client';
 import { envMerchant, getStores } from './poynt/service';
 import { PoyntError } from './poynt/client';
+import { initDb, pool } from './db';
 
 assertConfig();
 
@@ -36,7 +37,14 @@ app.get('/api/admin/stores', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true, db: 'up' });
+  } catch (e: any) {
+    res.status(503).json({ ok: false, db: 'down', error: e.message });
+  }
+});
 
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err instanceof PoyntError ? (err.status >= 500 ? 502 : err.status) : err.status || 500;
@@ -44,4 +52,9 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: err.message, details: err.details });
 });
 
-app.listen(config.port, () => console.log(`nas-godaddy-connector-service listening on ${config.publicBaseUrl}`));
+initDb()
+  .then(() => app.listen(config.port, () => console.log(`nas-godaddy-connector-service listening on ${config.publicBaseUrl}`)))
+  .catch((e) => {
+    console.error('[db] init failed:', e.message || e.code || e);
+    process.exit(1);
+  });

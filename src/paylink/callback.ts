@@ -24,18 +24,18 @@ async function postOnce(url: string, paylinkId: string): Promise<void> {
 }
 
 export async function notifyPaid(paylinkId: string): Promise<void> {
-  const p = store.get(paylinkId);
+  const p = await store.get(paylinkId);
   if (!p?.callbackUrl || p.callbackStatus === 'DONE') return;
 
   for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
     await sleep(RETRY_DELAYS_MS[i]);
     try {
       await postOnce(p.callbackUrl, paylinkId);
-      store.update(paylinkId, { callbackStatus: 'DONE', callbackError: undefined });
+      await store.update(paylinkId, { callbackStatus: 'DONE', callbackError: undefined });
       return;
     } catch (e: any) {
       console.warn(`[callback] ${paylinkId} attempt ${i + 1} failed: ${e.message}`);
-      store.update(paylinkId, { callbackStatus: 'FAILED', callbackError: e.message });
+      await store.update(paylinkId, { callbackStatus: 'FAILED', callbackError: e.message }).catch((err) => console.error('[callback] save failed', err.message));
     }
   }
 }
