@@ -1,0 +1,73 @@
+{
+  "info": {
+    "name": "nas-paylink",
+    "description": "API tạo và quản lý paylink (Poynt OTE). Số tiền tính bằng cents (2500 = $25.00).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3100" },
+    { "key": "adminApiKey", "value": "" },
+    { "key": "paylinkId", "value": "" }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "x-api-key", "type": "string" },
+      { "key": "value", "value": "{{adminApiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "Tạo paylink",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const data = pm.response.json();",
+              "pm.collectionVariables.set('paylinkId', data.id);",
+              "console.log('Paylink URL:', data.url);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/paylinks",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 2500,\n  \"description\": \"Gel nails\",\n  \"reference\": \"ORDER-001\",\n  \"expiresAt\": \"2026-12-31T00:00:00Z\"\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      }
+    },
+    {
+      "name": "Danh sách paylink",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/paylinks" }
+    },
+    {
+      "name": "Chi tiết paylink",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/paylinks/{{paylinkId}}" }
+    },
+    {
+      "name": "Huỷ paylink",
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/paylinks/{{paylinkId}}/cancel" }
+    },
+    {
+      "name": "Public - thông tin trang thanh toán",
+      "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/api/pay/{{paylinkId}}" }
+    },
+    {
+      "name": "Admin - store/device",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/stores" }
+    }
+  ]
+}
