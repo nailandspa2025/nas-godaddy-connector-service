@@ -42,3 +42,21 @@ export async function getPoyntMerchant(nasStoreId: number): Promise<Merchant> {
   cache.set(nasStoreId, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
+
+const nameCache = new Map<number, { value: string; expiresAt: number }>();
+
+/** Tên cửa hàng hiển thị trên trang thanh toán (catalog storeName); lỗi thì trả chuỗi rỗng. */
+export async function getStoreName(nasStoreId: number): Promise<string> {
+  const hit = nameCache.get(nasStoreId);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  if (!config.catalogApiUrl) return '';
+  try {
+    const res = await fetch(`${config.catalogApiUrl}/api/v1/stores/${nasStoreId}`, { headers: { Accept: 'application/json' } });
+    const body: any = await res.json().catch(() => null);
+    const value: string = (res.ok && body?.succeeded && body.data?.storeName) || '';
+    nameCache.set(nasStoreId, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+    return value;
+  } catch {
+    return '';
+  }
+}

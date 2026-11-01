@@ -12,49 +12,21 @@ export function envMerchant(): Merchant {
 }
 
 const biz = (m: Merchant) => `/businesses/${encodeURIComponent(m.businessId)}`;
-const cacheKey = (m: Merchant) => `${m.businessId}|${m.storeId ?? ''}|${m.deviceId ?? ''}`;
 
 export type Context = { businessId: string; storeId: string; storeDeviceId: string };
-const contextCache = new Map<string, Context>();
 
-/** storeId/storeDeviceId: lấy từ cấu hình, thiếu thì lấy store ACTIVE + device ACTIVATED đầu tiên. */
-export async function resolveContext(m: Merchant): Promise<Context> {
+/** Context charge lấy hoàn toàn từ cấu hình store trong catalog (không dò trên Poynt). */
+export function resolveContext(m: Merchant): Context {
   const { businessId, storeId, deviceId } = m;
-  if (storeId && deviceId) return { businessId, storeId, storeDeviceId: deviceId };
-  const cached = contextCache.get(cacheKey(m));
-  if (cached) return cached;
-
-  const stores: any[] = (await poynt.get(`${biz(m)}/stores`)) || [];
-  const store = stores.find((s) => (storeId ? s.id === storeId : s.status === 'ACTIVE')) || stores[0];
-  if (!store) throw new Error(`No store found for business ${businessId}`);
-  const devices: any[] = store.storeDevices || [];
-  const device = devices.find((d) => d.status === 'ACTIVATED') || devices[0];
-  if (!deviceId && !device) throw new Error(`Store ${store.id} has no device`);
-
-  const context = { businessId, storeId: store.id, storeDeviceId: deviceId || device.deviceId };
-  contextCache.set(cacheKey(m), context);
-  return context;
+  const missing = [!storeId && 'StoreId', !deviceId && 'DeviceId'].filter(Boolean);
+  if (missing.length) {
+    throw Object.assign(new Error(`Poynt configuration is missing ${missing.join(' and ')}`), { status: 400 });
+  }
+  return { businessId, storeId: storeId!, storeDeviceId: deviceId! };
 }
 
 export async function getStores(m: Merchant) {
   return poynt.get(`${biz(m)}/stores`);
-}
-
-const storeNameCache = new Map<string, string>();
-/** Tên cửa hàng hiển thị trên trang thanh toán; lỗi thì trả chuỗi rỗng. */
-export async function getStoreName(m: Merchant): Promise<string> {
-  const key = cacheKey(m);
-  const cached = storeNameCache.get(key);
-  if (cached !== undefined) return cached;
-  try {
-    const { storeId } = await resolveContext(m);
-    const store = await poynt.get(`${biz(m)}/stores/${encodeURIComponent(storeId)}`);
-    const name = store?.displayName || store?.name || '';
-    storeNameCache.set(key, name);
-    return name;
-  } catch {
-    return '';
-  }
 }
 
 export type ChargeInput = {
@@ -68,7 +40,7 @@ export type ChargeInput = {
 
 /** Charge nonce từ Poynt Collect: POST /businesses/{id}/cards/tokenize/charge */
 export async function chargeNonce(m: Merchant, input: ChargeInput) {
-  const context = await resolveContext(m);
+  const context = resolveContext(m);
   const body: Record<string, unknown> = {
     action: 'SALE',
     context,

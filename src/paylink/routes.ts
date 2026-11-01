@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { config } from '../config';
-import { getPoyntMerchant } from '../catalog/client';
-import { chargeNonce, envMerchant, getStoreName, Merchant, resolveContext } from '../poynt/service';
+import { getPoyntMerchant, getStoreName } from '../catalog/client';
+import { chargeNonce, envMerchant, Merchant, resolveContext } from '../poynt/service';
 import { notifyPaid } from './callback';
 import * as store from './store';
 
@@ -38,8 +38,8 @@ adminRouter.post('/', async (req, res, next) => {
     return res.status(400).json({ error: 'callbackUrl must be an http(s) URL' });
   }
   try {
-    // Kiểm tra store đã cấu hình Poynt trước khi phát link cho khách
-    if (nasStoreId) await getPoyntMerchant(nasStoreId);
+    // Kiểm tra store đã cấu hình Poynt đủ BusinessId/StoreId/DeviceId trước khi phát link cho khách
+    resolveContext(nasStoreId ? await getPoyntMerchant(nasStoreId) : envMerchant());
   } catch (e) {
     return next(e);
   }
@@ -79,10 +79,10 @@ publicRouter.get('/:id', async (req, res, next) => {
   const p = await store.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   let merchant: Merchant;
-  let poyntStoreId: string | null;
+  let poyntStoreId: string;
   try {
     merchant = await merchantOf(p);
-    poyntStoreId = merchant.storeId ?? (await resolveContext(merchant)).storeId;
+    poyntStoreId = resolveContext(merchant).storeId;
   } catch (e) {
     return next(e);
   }
@@ -92,7 +92,7 @@ publicRouter.get('/:id', async (req, res, next) => {
     currency: p.currency,
     description: p.description,
     reference: p.reference,
-    merchantName: await getStoreName(merchant),
+    merchantName: p.nasStoreId ? await getStoreName(p.nasStoreId) : '',
     paidAt: p.paidAt,
     transactionId: p.status === 'PAID' ? p.transactionId : undefined,
     status: store.isExpired(p) && p.status === 'ACTIVE' ? 'EXPIRED' : p.status,
