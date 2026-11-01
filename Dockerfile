@@ -13,6 +13,9 @@ ENV NODE_ENV=production \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# config.ts nạp .env.${NODE_ENV} → .env.production (biến truyền qua --env-file/-e vẫn được ưu tiên)
+COPY .env.production ./
+COPY keys/private.pem ./keys/private.pem
 # Secrets không nằm trong image: .env qua --env-file, private key + data qua volume
 RUN mkdir -p keys data
 EXPOSE 6009
