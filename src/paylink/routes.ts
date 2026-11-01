@@ -5,9 +5,6 @@ import { chargeNonce, envMerchant, getStoreName, Merchant, resolveContext } from
 import { notifyPaid } from './callback';
 import * as store from './store';
 
-const linkUrl = (id: string) => `${config.paymentPageUrl}/${id}`;
-const withUrl = (p: store.Paylink) => ({ ...p, url: linkUrl(p.id) });
-
 /** Cấu hình Poynt của paylink: theo store NAS nếu có, ngược lại lấy từ .env. */
 const merchantOf = (p: store.Paylink): Promise<Merchant> =>
   p.nasStoreId ? getPoyntMerchant(p.nasStoreId) : Promise.resolve(envMerchant());
@@ -47,14 +44,14 @@ adminRouter.post('/', async (req, res, next) => {
     return next(e);
   }
   const p = await store.create({ amount, currency, description: String(description), reference, expiresAt, nasStoreId, callbackUrl: callbackUrl || undefined });
-  res.status(201).json(withUrl(p));
+  res.status(201).json(p);
 });
 
-adminRouter.get('/', async (_req, res) => res.json((await store.list()).map(withUrl)));
+adminRouter.get('/', async (_req, res) => res.json(await store.list()));
 
 adminRouter.get('/:id', async (req, res) => {
   const p = await store.get(req.params.id);
-  return p ? res.json(withUrl(p)) : res.status(404).json({ error: 'Payment link not found' });
+  return p ? res.json(p) : res.status(404).json({ error: 'Payment link not found' });
 });
 
 /** Gửi lại callback (vd khi order-api từng lỗi). */
@@ -72,7 +69,7 @@ adminRouter.post('/:id/cancel', async (req, res) => {
   const p = await store.get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment link not found' });
   if (p.status !== 'ACTIVE') return res.status(409).json({ error: `Payment link is ${p.status}` });
-  res.json(withUrl(await store.update(p.id, { status: 'CANCELLED' })));
+  res.json(await store.update(p.id, { status: 'CANCELLED' }));
 });
 
 export const publicRouter = Router();

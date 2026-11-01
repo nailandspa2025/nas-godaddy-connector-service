@@ -5,7 +5,7 @@ Service tạo **link thanh toán (paylink)** cho app Poynt Cloud **NAS POS CRM**
 
 Chỉ là API — trang thanh toán nằm ở nas-portal (`/pay/:id`).
 
-Luồng: merchant tạo paylink → gửi link `{PAYMENT_PAGE_URL}/:id` (portal) cho khách → khách nhập thẻ vào form
+Luồng: merchant tạo paylink → trả `id`, app/portal tự ghép link `{portal}/pay/:id` gửi cho khách → khách nhập thẻ vào form
 Poynt Collect → server charge nonce qua `POST /businesses/{businessId}/cards/tokenize/charge`
 với số tiền lưu trong paylink (không lấy số tiền từ client).
 
@@ -31,7 +31,7 @@ Số tiền tính bằng **cents** (`1050` = $10.50). Các API `/api/paylinks*` 
 # Tạo paylink
 curl -X POST localhost:3100/api/paylinks -H 'Content-Type: application/json' \
   -d '{"amount":1050,"description":"Mani + Pedi","reference":"ORDER-123","expiresAt":"2026-12-31T00:00:00Z"}'
-# → { "id": "pl_xxx", "url": "http://localhost:3100/pay/pl_xxx", "status": "ACTIVE", ... }
+# → { "id": "pl_xxx", "status": "ACTIVE", ... }  (link khách = {portal}/pay/pl_xxx)
 
 curl localhost:3100/api/paylinks             # danh sách
 curl localhost:3100/api/paylinks/pl_xxx      # chi tiết (status, transactionId)
@@ -75,6 +75,6 @@ scripts/token.ts        kiểm tra cấu hình
 
 - `DATABASE_URL` trỏ tới Postgres (trên server: `postgresql://postgres:<pw>@postgres_db:5432/Nas-GoDaddy`, network `nas-net`).
   Lần start đầu, nếu bảng `paylinks` trống mà có `PAYLINK_DATA_FILE` (data/paylinks.json cũ) thì dữ liệu được import một lần.
-- Bật `ADMIN_API_KEY`, chạy sau HTTPS. Đặt `PAYMENT_PAGE_URL` = `https://<portal>/pay` và `CORS_ORIGINS` = domain portal.
+- Bật `ADMIN_API_KEY`, chạy sau HTTPS. Đặt `CORS_ORIGINS` = domain portal (hoặc `*`).
 - Thêm webhook Poynt (`TRANSACTION_*`) để đối soát trạng thái thay vì chỉ dựa vào response charge.
 - Không commit `.env` và `keys/`.
