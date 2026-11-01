@@ -25,8 +25,16 @@ export async function resolveContext(m: Merchant): Promise<Context> {
   if (cached) return cached;
 
   const stores: any[] = (await poynt.get(`${biz(m)}/stores`)) || [];
-  const store = stores.find((s) => (storeId ? s.id === storeId : s.status === 'ACTIVE')) || stores[0];
-  if (!store) throw new Error(`No store found for business ${businessId}`);
+  // StoreId đã cấu hình thì phải đúng store đó; không lặng lẽ lấy store khác (tiền sẽ vào nhầm store)
+  const store = storeId
+    ? stores.find((s) => s.id === storeId)
+    : stores.find((s) => s.status === 'ACTIVE') || stores[0];
+  if (!store) {
+    throw Object.assign(
+      new Error(storeId ? `Poynt store ${storeId} not found in business ${businessId}` : `No store found for business ${businessId}`),
+      { status: 400 },
+    );
+  }
   const devices: any[] = store.storeDevices || [];
   const device = devices.find((d) => d.status === 'ACTIVATED') || devices[0];
   if (!deviceId && !device) throw new Error(`Store ${store.id} has no device`);
