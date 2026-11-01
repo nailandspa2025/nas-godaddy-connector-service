@@ -11,6 +11,12 @@ assertConfig();
 const app = express();
 app.use(express.json());
 
+// Gateway map /godaddy/api/{version}/{everything} → /api/{version}/{everything}: bỏ /v1, /v2... để dùng chung route /api/*
+app.use((req, _res, next) => {
+  req.url = req.url.replace(/^\/api\/v\d+(?=\/|\?|$)/, '/api');
+  next();
+});
+
 /** CORS chỉ cho API public mà trang thanh toán trên nas-portal gọi; API admin là server-to-server. */
 function cors(req: Request, res: Response, next: NextFunction) {
   const origin = req.get('origin');
@@ -37,7 +43,7 @@ app.get('/api/admin/stores', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// /api/health để gọi qua gateway (/godaddy/api/health → /api/health)
+// /api/health (= /api/v1/health) để gọi qua gateway: /godaddy/api/v1/health
 app.get(['/health', '/api/health'], async (_req, res) => {
   try {
     await pool.query('SELECT 1');
