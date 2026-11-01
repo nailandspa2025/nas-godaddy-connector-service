@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Nạp .env.<NODE_ENV> (mặc định development), rồi .env làm fallback. Biến đã có sẵn (vd docker --env-file) không bị ghi đè.
+dotenv.config({
+  path: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'].map((f) => path.resolve(process.cwd(), f)),
+  quiet: true,
+});
 
 function loadPrivateKey(): string | null {
   if (process.env.POYNT_PRIVATE_KEY) return process.env.POYNT_PRIVATE_KEY.replace(/\\n/g, '\n');
@@ -8,7 +14,7 @@ function loadPrivateKey(): string | null {
   return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
 }
 
-const port = Number(process.env.PORT) || 3000;
+const port = Number(process.env.PORT) || 6009;
 
 export const config = {
   port,

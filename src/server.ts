@@ -37,7 +37,8 @@ app.get('/api/admin/stores', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.get('/health', async (_req, res) => {
+// /api/health để gọi qua gateway (/godaddy/api/health → /api/health)
+app.get(['/health', '/api/health'], async (_req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ ok: true, db: 'up' });
@@ -53,7 +54,15 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 initDb()
-  .then(() => app.listen(config.port, () => console.log(`nas-godaddy-connector-service listening on ${config.publicBaseUrl}`)))
+  .then(() =>
+    app.listen(config.port, (err?: Error) => {
+      if (err) {
+        console.error(`[server] cannot listen on port ${config.port}:`, err.message);
+        process.exit(1);
+      }
+      console.log(`nas-godaddy-connector-service listening on port ${config.port} (public: ${config.publicBaseUrl})`);
+    }),
+  )
   .catch((e) => {
     console.error('[db] init failed:', e.message || e.code || e);
     process.exit(1);
