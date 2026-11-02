@@ -1,6 +1,8 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { assertConfig, config } from './config';
 import { adminRouter, publicRouter } from './paylink/routes';
+import { poyntRouter } from './poynt/routes';
+import { terminalCallbackRouter, terminalRouter } from './terminal/routes';
 import { getPoyntMerchant } from './catalog/client';
 import { envMerchant, getStores } from './poynt/service';
 import { PoyntError } from './poynt/client';
@@ -12,10 +14,10 @@ const app = express();
 app.use(express.json());
 
 // Gateway map /godaddy/api/{version}/{everything} → /api/{version}/{everything}: bỏ /v1, /v2... để dùng chung route /api/*
-app.use((req, _res, next) => {
-  req.url = req.url.replace(/^\/api\/v\d+(?=\/|\?|$)/, '/api');
-  next();
-});
+// app.use((req, _res, next) => {
+//   req.url = req.url.replace(/^\/api\/v\d+(?=\/|\?|$)/, '/api');
+//   next();
+// });
 
 /** CORS chỉ cho API public mà trang thanh toán trên nas-portal gọi; API admin là server-to-server. */
 function cors(req: Request, res: Response, next: NextFunction) {
@@ -30,10 +32,15 @@ function cors(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-app.use('/api/paylinks', adminRouter);
-app.use('/api/pay', cors, publicRouter);
+app.use('/api/v1/paylinks', adminRouter);
+app.use('/api/v1/pay', cors, publicRouter);
+// API Poynt trực tiếp (business/ACH, Apple Pay, tokenize/COF, charge token, surcharge) — server-to-server
+app.use('/api/v1/poynt', poyntRouter);
+// Thanh toán trên máy POS (Payment Bridge). Callback do máy POS gọi: mount trước router admin (không cần x-api-key)
+app.use('/api/v1/terminal/callback', terminalCallbackRouter);
+app.use('/api/v1/terminal', terminalRouter);
 
-app.get('/api/admin/stores', async (req, res, next) => {
+app.get('/api/v1/stores', async (req, res, next) => {
   if (config.adminApiKey && req.get('x-api-key') !== config.adminApiKey) return res.status(401).json({ error: 'Unauthorized' });
   try {
     // ?nasStoreId=123 → business của store NAS đó; không truyền → business trong .env
@@ -44,7 +51,7 @@ app.get('/api/admin/stores', async (req, res, next) => {
 });
 
 // /api/health (= /api/v1/health) để gọi qua gateway: /godaddy/api/v1/health
-app.get(['/health', '/api/health'], async (_req, res) => {
+app.get(['/health', '/api/v1/health'], async (_req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ ok: true, db: 'up' });

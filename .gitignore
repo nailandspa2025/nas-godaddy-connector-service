@@ -3,3 +3,7 @@ dist/
 !keys/.gitkeep
 data/*
 !data/.gitkeep
+postman/nas-paylink.postman_collection.json
+postman/nas-paylink.postman_collection.json
+/postman
+SE-ISV integration with Poynt Cloud app and Poynt.pdf
