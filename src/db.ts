@@ -31,6 +31,40 @@ CREATE TABLE IF NOT EXISTS paylinks (
 );
 CREATE INDEX IF NOT EXISTS paylinks_created_at_idx ON paylinks (created_at DESC);
 CREATE INDEX IF NOT EXISTS paylinks_reference_idx ON paylinks (reference);
+
+-- Thanh toán trên máy POS (Payment Bridge / cloudMessages). Mỗi thao tác (sale, authorize, capture, void, refund)
+-- là một dòng; id cũng là referenceId gửi xuống máy. capture/void/refund trỏ về giao dịch gốc qua parent_id.
+CREATE TABLE IF NOT EXISTS terminal_payments (
+  id                  TEXT PRIMARY KEY,
+  request_id          TEXT UNIQUE,
+  parent_id           TEXT REFERENCES terminal_payments(id),
+  action              TEXT NOT NULL CHECK (action IN ('SALE','AUTHORIZE','CAPTURE','VOID','REFUND')),
+  amount              INTEGER CHECK (amount > 0),
+  currency            TEXT NOT NULL,
+  reference           TEXT,
+  notes               TEXT,
+  nas_store_id        INTEGER,
+  business_id         TEXT NOT NULL,
+  store_id            TEXT NOT NULL,
+  device_id           TEXT NOT NULL,
+  status              TEXT NOT NULL CHECK (status IN ('PENDING','APPROVED','DECLINED','CANCELLED','FAILED')),
+  terminal_status     TEXT,
+  transaction_id      TEXT,
+  transaction_status  TEXT,
+  card_type           TEXT,
+  card_last4          TEXT,
+  error               TEXT,
+  callback_secret     TEXT NOT NULL,
+  callback_url        TEXT,
+  callback_status     TEXT CHECK (callback_status IN ('DONE','FAILED')),
+  callback_error      TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at        TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS terminal_payments_created_at_idx ON terminal_payments (created_at DESC);
+CREATE INDEX IF NOT EXISTS terminal_payments_reference_idx ON terminal_payments (reference);
+CREATE INDEX IF NOT EXISTS terminal_payments_device_status_idx ON terminal_payments (device_id, status);
 `;
 
 /** Tạo database trong DATABASE_URL nếu chưa tồn tại (lỗi 3D000). */

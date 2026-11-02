@@ -36,7 +36,7 @@ curl -X POST localhost:3100/api/paylinks -H 'Content-Type: application/json' \
 curl localhost:3100/api/paylinks             # danh sách
 curl localhost:3100/api/paylinks/pl_xxx      # chi tiết (status, transactionId)
 curl -X POST localhost:3100/api/paylinks/pl_xxx/cancel
-curl localhost:3100/api/admin/stores         # store/device của business
+curl localhost:3100/api/stores         # store/device của business
 ```
 
 Đa store (NAS): truyền `nasStoreId` khi tạo paylink → cấu hình Poynt (BusinessId/StoreId/DeviceId)
@@ -51,13 +51,76 @@ Public (trang thanh toán trên nas-portal gọi, có CORS theo `CORS_ORIGINS`):
 - `GET /api/pay/:id` — thông tin hiển thị + cấu hình Poynt Collect
 - `POST /api/pay/:id/pay` `{ nonce, email? }` — charge `SALE`; thành công khi status `CAPTURED`/`AUTHORIZED`, paylink chuyển `PAID`
 
+`collect.paymentMethods` trong `GET /api/pay/:id` là `["card","ach"]` khi business có `attributes.allowACH = "1"`
+(cache 5 phút), ngược lại `["card"]` — portal dùng làm `paymentMethods` khi `collect.mount(...)`.
+Google Pay / Paze / Apple Pay bật phía portal qua `collect.supportWalletPayments()`.
+
+### Poynt (admin, server-to-server)
+
+Theo tài liệu *ISV integration with Poynt Cloud app and Poynt Collect*. Cần `x-api-key`.
+Merchant: `nasStoreId` (query hoặc body) → cấu hình store NAS; không truyền → `.env`.
+
+| API | Poynt |
+|---|---|
+| `GET /api/poynt/business` | `GET /businesses/{id}` |
+| `GET /api/poynt/ach` → `{ allowAch }` | `attributes.allowACH` của business |
+| `GET /api/poynt/stores` (= `/api/stores`) | `GET /businesses/{id}/stores` |
+| `POST /api/poynt/apple-pay/registration` `{ registerDomains, unregisterDomains?, merchantName, merchantUrl? }` | `POST /businesses/{id}/apple-pay/registration` |
+| `GET /api/poynt/apple-pay/domain-association-file` | nội dung file host tại `https://{domain}/.well-known/apple-developer-merchantid-domain-association` |
+| `POST /api/poynt/tokens` `{ nonce, saveCardOnFile?, cardAgreement? }` | `POST /businesses/{id}/cards/tokenize` (Card on File) |
+| `POST /api/poynt/eligible-fees` `{ nonce \| cardToken, amount }` | `POST /businesses/{id}/transactions/eligible-fees` (surcharge) |
+| `POST /api/poynt/charges` `{ nonce \| cardToken, amount, action?, intent?, mit?, transactionFees?, requestId? }` | `POST /businesses/{id}/cards/tokenize/charge` |
+
+- `charges`: `action` = `SALE` (mặc định) / `AUTHORIZE`; COF: `intent` = `UNSCHEDULED_COF_TXN` / `RECURRING_COF_TXN`
+  (`RECURRING_COF_TXN` luôn gửi `mit: true`). Surcharge: truyền `fees` từ `eligible-fees` vào `transactionFees`,
+  `amount` là tiền đơn hàng — server gửi `transactionAmount = amount + Σ fee.amount`, `orderAmount = amount`.
+- Token tạo với `saveCardOnFile: true` **bắt buộc có `intent`** khi charge (kể cả `AUTHORIZE`), nếu thiếu Poynt trả
+  400 `Invalid transaction intent provided`. Token thường (không COF) charge được không cần `intent` (đã test OTE).
+- Truyền `requestId` cố định cho mỗi giao dịch và giữ nguyên khi retry (là `Poynt-Request-Id`) để Poynt không charge trùng:
+  retry với **cùng body** → Poynt trả lại đúng transaction cũ; cùng `requestId` nhưng body khác → Poynt trả 400.
+- Payment token (`cardToken`) do bên gọi lưu; service này không lưu token.
+
+### Thanh toán trên máy POS (Payment Bridge)
+
+Theo [Payment Bridge API](https://docs.poynt.com/app-integration/semiIntegration/payment-bridge/payment-actions.html):
+server gửi lệnh qua `POST /cloudMessages` → Poynt cloud chuyển xuống Smart Terminal → khách quẹt/chạm thẻ →
+**máy POS** POST kết quả về `{PUBLIC_BASE_URL}/api/v1/terminal/callback/:id` → server `GET` lại transaction từ Poynt để
+xác minh → báo `callbackUrl` (nas-order-api) với body `{ "terminalPaymentId": "tp_xxx" }`, bên nhận tự `GET` lại để xác minh.
+
+Yêu cầu: app có quyền **Cloud Messages – WRITE**; `PUBLIC_BASE_URL` là URL public mà máy POS gọi được
+(vd `https://<gateway>/godaddy`, gateway map `/godaddy/api/v1/*` → `/api/v1/*`). Server cảnh báo khi đang là localhost.
+
+| API (cần `x-api-key`) | Mô tả |
+|---|---|
+| `GET /api/v1/terminal/devices?nasStoreId=` | Máy POS đã kích hoạt trong StoreId của store |
+| `POST /api/v1/terminal/devices/pcm-profile` `{ nasStoreId?, deviceId? }` | Gửi `setCustomPcmProfile` (Poynt khuyến nghị, giữ kết nối máy ổn định) |
+| `POST /api/v1/terminal/payments` `{ amount, action?: SALE\|AUTHORIZE, nasStoreId?, deviceId?, reference?, notes?, requestId?, callbackUrl?, allowTip?, ttl? }` | Gửi giao dịch xuống máy → 202 `PENDING` |
+| `GET /api/v1/terminal/payments?reference=` | Danh sách |
+| `GET /api/v1/terminal/payments/:id` | Chi tiết + `operations[]` (capture/void/refund) |
+| `POST /api/v1/terminal/payments/:id/cancel` | Huỷ giao dịch đang chờ trên máy (kết quả về qua callback `CANCELED`) |
+| `POST /api/v1/terminal/payments/:id/capture` / `void` / `refund` `{ amount? (chỉ refund), requestId? }` | Thao tác trên máy, tạo một giao dịch con |
+| `POST /api/v1/terminal/payments/:id/sync` | Xác minh lại với Poynt khi còn `PENDING` nhưng máy đã báo transactionId |
+| `POST /api/v1/terminal/payments/:id/callback` | Gửi lại callback cho nas-order-api |
+
+- Trạng thái: `PENDING` → `APPROVED` / `DECLINED` / `CANCELLED` / `FAILED` (gửi lệnh lỗi hoặc xác minh không khớp).
+  `terminalStatus` = trạng thái máy báo (`RECEIVED`, `STARTED`, `PROCESSED`, `CANCELED`).
+- `deviceId` mặc định là DeviceId của store; phải là máy `TERMINAL` `ACTIVATED` trong đúng StoreId.
+  Máy đang có sale/authorize `PENDING` (trong 10 phút) thì từ chối giao dịch mới (409) — huỷ hoặc chờ kết quả.
+- `requestId` là khoá idempotency: gửi lại cùng `requestId` trả giao dịch cũ (200), không gửi lệnh mới xuống máy.
+- Callback từ máy POS được xác thực bằng header `X-Terminal-Secret` riêng cho từng giao dịch (gửi qua `custom-http-header`);
+  kết quả chỉ được chốt sau khi `GET /businesses/{id}/transactions/{txnId}` khớp referenceId, số tiền, device.
+- `ttl` (mặc định 60s) chỉ là thời gian Poynt giữ lệnh khi chưa giao được xuống máy, không phải thời gian chờ khách.
+- Nếu máy không bao giờ gọi callback (mất mạng sau khi thanh toán), giao dịch giữ `PENDING`; kiểm tra trên máy/Poynt HQ.
+
 ## Cấu trúc
 
 ```
 src/config.ts           đọc .env + private key
 src/poynt/auth.ts       self-signed JWT (RS256) → POST /token, cache token
 src/poynt/client.ts     HTTP client, retry 1 lần khi 401
-src/poynt/service.ts    resolve store/device, charge nonce
+src/poynt/service.ts    gọi Poynt: business/ACH, store, Apple Pay, tokenize, charge, eligible-fees
+src/poynt/routes.ts     API admin /api/v1/poynt/*
+src/terminal/           thanh toán trên máy POS (Payment Bridge): store, service (cloudMessages + xác minh callback), routes
 src/db.ts               kết nối PostgreSQL (DATABASE_URL), tự tạo database + bảng paylinks
 src/paylink/store.ts    lưu paylink vào PostgreSQL (bảng paylinks)
 src/paylink/routes.ts   API admin + public

@@ -1,20 +1,14 @@
-import { NextFunction, Request, Response, Router } from 'express';
+import { Router } from 'express';
 import { config } from '../config';
 import { getPoyntMerchant, getStoreName } from '../catalog/client';
-import { chargeNonce, envMerchant, Merchant, resolveContext } from '../poynt/service';
+import { chargeNonce, envMerchant, isAchAllowed, Merchant, resolveContext } from '../poynt/service';
+import { requireAdmin } from '../poynt/routes';
 import { notifyPaid } from './callback';
 import * as store from './store';
 
 /** Cấu hình Poynt của paylink: theo store NAS nếu có, ngược lại lấy từ .env. */
 const merchantOf = (p: store.Paylink): Promise<Merchant> =>
   p.nasStoreId ? getPoyntMerchant(p.nasStoreId) : Promise.resolve(envMerchant());
-
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (config.adminApiKey && req.get('x-api-key') !== config.adminApiKey) {
-    return res.status(401).json({ error: 'Invalid or missing x-api-key' });
-  }
-  next();
-}
 
 // Chống double-click: mỗi paylink chỉ xử lý một lần charge tại một thời điểm
 const charging = new Set<string>();
@@ -86,6 +80,11 @@ publicRouter.get('/:id', async (req, res, next) => {
   } catch (e) {
     return next(e);
   }
+  // ACH chỉ hiển thị khi business có allowACH = "1"; lỗi tra cứu thì coi như không có ACH (vẫn trả thẻ)
+  const allowAch = await isAchAllowed(merchant).catch((e) => {
+    console.warn(`[pay] ACH check failed for ${merchant.businessId}: ${e.message}`);
+    return false;
+  });
   res.json({
     id: p.id,
     amount: p.amount,
@@ -101,6 +100,7 @@ publicRouter.get('/:id', async (req, res, next) => {
       businessId: merchant.businessId,
       storeId: poyntStoreId,
       applicationId: config.poynt.applicationId,
+      paymentMethods: allowAch ? ['card', 'ach'] : ['card'],
     },
   });
 });

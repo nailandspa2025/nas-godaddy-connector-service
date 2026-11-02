@@ -50,5 +50,8 @@ export function assertConfig(): void {
   if (!config.poynt.applicationId) missing.push('POYNT_APPLICATION_ID');
   if (!config.poynt.privateKey) missing.push('POYNT_PRIVATE_KEY / POYNT_PRIVATE_KEY_PATH');
   if (!config.catalogApiUrl && !config.poynt.businessId) missing.push('CATALOG_API_URL hoặc POYNT_BUSINESS_ID');
+  if (/localhost|127\.0\.0\.1/.test(config.publicBaseUrl)) {
+    console.warn(`[config] PUBLIC_BASE_URL=${config.publicBaseUrl} — máy POS không gọi được callback /api/v1/terminal/callback; đặt URL public (vd https://gateway/godaddy).`);
+  }
   if (missing.length) console.warn(`[config] Missing configuration: ${missing.join(', ')} — Poynt API calls will fail.`);
 }
