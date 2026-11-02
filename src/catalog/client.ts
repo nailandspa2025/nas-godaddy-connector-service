@@ -23,7 +23,16 @@ export async function getPoyntMerchant(nasStoreId: number): Promise<Merchant> {
   if (!config.catalogApiUrl) throw Object.assign(new Error('CATALOG_API_URL is not configured'), { status: 500 });
 
   const url = `${config.catalogApiUrl}/api/v1/stores/payment-provider?storeId=${nasStoreId}&paymentMethod=${POYNT_PAYMENT_METHOD}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+  } catch (e: any) {
+    // Lỗi mạng (DNS, connection refused, timeout): báo rõ thay vì "fetch failed"
+    throw Object.assign(new Error(`Cannot reach nas-catalog-api at ${config.catalogApiUrl}`), {
+      status: 502,
+      details: e.cause?.code || e.cause?.message || e.message,
+    });
+  }
   const body = (await res.json().catch(() => null)) as ApiResponse | null;
   if (!res.ok || !body?.succeeded || !body.data) {
     throw Object.assign(new Error(`Store ${nasStoreId} has no active Poynt configuration`), {

@@ -22,7 +22,7 @@ export const config = {
   adminApiKey: process.env.ADMIN_API_KEY || null,
   /** Origin được phép gọi /api/pay/* từ trình duyệt (nas-portal), phân tách bằng dấu phẩy */
   // Đặt CORS_ORIGINS= (rỗng) khi chạy sau nas-gateway-api: gateway đã thêm CORS, tránh trùng header
-  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+  corsOrigins: (process.env.CORS_ORIGINS ?? 'https://api.nasshine.com')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
