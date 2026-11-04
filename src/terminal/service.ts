@@ -16,6 +16,8 @@ import * as store from './store';
 export const SECRET_HEADER = 'X-Terminal-Secret';
 /** Thời gian (giây) Poynt giữ lệnh khi chưa giao được xuống máy. */
 export const DEFAULT_TTL = 60;
+/** Chờ thêm (giây) sau ttl trước khi coi là EXPIRED, để kịp nhận RECEIVED nếu máy nhận lệnh sát hạn. */
+export const EXPIRE_GRACE_SECONDS = 30;
 /** Không gửi giao dịch mới xuống máy đang có sale/authorize PENDING trong khoảng này. */
 const DEVICE_BUSY_MINUTES = 10;
 
@@ -78,19 +80,21 @@ export type StartInput = {
 
 /** Gửi sale/authorize xuống máy POS. Trả { payment, created } — created=false khi requestId đã tồn tại. */
 export async function startPayment(input: StartInput) {
+  const ttl = input.ttl ?? DEFAULT_TTL;
   if (input.requestId) {
     const existing = await store.getByRequestId(input.requestId);
     if (existing) return { payment: existing, created: false };
   }
   const m = await merchantFor(input.nasStoreId);
   const { storeId, deviceId } = await resolveDevice(m, input.deviceId);
+  await expireStale();
   const busy = await store.findPendingOnDevice(deviceId, DEVICE_BUSY_MINUTES);
   if (busy) throw httpError(409, `Device is busy with pending payment ${busy.id}; cancel it or wait for its result`, { pendingId: busy.id });
 
   const p = await store.create({
     action: input.action, amount: input.amount, currency: input.currency, businessId: m.businessId, storeId, deviceId,
     nasStoreId: input.nasStoreId, reference: input.reference, notes: input.notes, requestId: input.requestId,
-    callbackUrl: input.callbackUrl,
+    callbackUrl: input.callbackUrl, ttl,
   });
   const payment: Record<string, unknown> = {
     amount: input.amount,
@@ -103,7 +107,7 @@ export async function startPayment(input: StartInput) {
   if (input.action === 'AUTHORIZE') payment.authzOnly = true;
   const notes = [input.reference, input.notes].filter(Boolean).join(' / ');
   if (notes) payment.notes = notes;
-  await send(p, { payment: JSON.stringify(payment) }, input.ttl ?? DEFAULT_TTL);
+  await send(p, { payment: JSON.stringify(payment) }, ttl);
   return { payment: p, created: true };
 }
 
@@ -121,6 +125,7 @@ export async function followUp(parentId: string, action: 'CAPTURE' | 'VOID' | 'R
     const existing = await store.getByRequestId(input.requestId);
     if (existing) return { payment: existing, created: false };
   }
+  const ttl = input.ttl ?? DEFAULT_TTL;
   const parent = await store.get(parentId);
   if (!parent) throw httpError(404, 'Terminal payment not found');
   if (!FOLLOW_UP_RULES[action].includes(parent.action)) {
@@ -135,14 +140,14 @@ export async function followUp(parentId: string, action: 'CAPTURE' | 'VOID' | 'R
   const p = await store.create({
     action, parentId: parent.id, amount: input.amount, currency: parent.currency, businessId: parent.businessId,
     storeId: parent.storeId, deviceId: parent.deviceId, nasStoreId: parent.nasStoreId, reference: parent.reference,
-    requestId: input.requestId, callbackUrl: input.callbackUrl ?? parent.callbackUrl,
+    requestId: input.requestId, callbackUrl: input.callbackUrl ?? parent.callbackUrl, ttl,
   });
   const data: Record<string, unknown> = { action: action.toLowerCase(), transactionId: parent.transactionId, referenceId: p.id };
   if (action === 'REFUND' && input.amount !== undefined) {
     data.purchaseAmount = input.amount;
     data.currency = parent.currency;
   }
-  await send(p, data, input.ttl ?? DEFAULT_TTL);
+  await send(p, data, ttl);
   return { payment: p, created: true };
 }
 
@@ -224,7 +229,8 @@ export async function verifyAndComplete(p: store.TerminalPayment, transactionId:
   else if (t?.status === 'DECLINED') patch = { ...base, status: 'DECLINED' };
   else patch = { ...base, status: 'FAILED', error: `Unexpected transaction status ${t?.status} for ${p.action}` };
 
-  const done = await store.complete(p.id, patch);
+  // fromExpired: máy báo kết quả sau khi đã EXPIRED — transaction đã xác minh thì vẫn phải ghi nhận
+  const done = await store.complete(p.id, patch, { fromExpired: true });
   if (!done) return (await store.get(p.id))!; // đã được callback/sync khác chốt trước
   notify(done);
   return done;
@@ -233,7 +239,9 @@ export async function verifyAndComplete(p: store.TerminalPayment, transactionId:
 /** Xử lý payload máy POS gửi về (chạy nền sau khi đã trả 200 cho máy). */
 export async function processCallback(p: store.TerminalPayment, body: any): Promise<void> {
   const status = String(body?.status || '').toUpperCase();
-  if (p.status !== 'PENDING') return;
+  if (p.status !== 'PENDING' && p.status !== 'EXPIRED') return;
+  // Đã EXPIRED: chỉ quan tâm khi máy báo có transaction (khách vẫn thanh toán được), bỏ qua RECEIVED/CANCELED muộn
+  if (p.status === 'EXPIRED' && !pickTransaction(p, body)?.id) return;
 
   if (status === 'CANCELED' || status === 'CANCELLED') {
     const done = await store.complete(p.id, { status: 'CANCELLED', terminalStatus: 'CANCELED' });
@@ -253,6 +261,16 @@ export async function processCallback(p: store.TerminalPayment, body: any): Prom
     console.error(`[terminal] verify ${p.id} failed: ${e.message}`);
     await store.update(p.id, { error: `Verification error: ${e.message}` });
   }
+}
+
+/** Chuyển các giao dịch máy không phản hồi quá hạn sang EXPIRED và báo callbackUrl. `id` để chỉ xét một giao dịch. */
+export async function expireStale(id?: string): Promise<store.TerminalPayment[]> {
+  const expired = await store.expireStale(EXPIRE_GRACE_SECONDS, DEFAULT_TTL, id);
+  for (const p of expired) {
+    console.log(`[terminal] ${p.id} expired (device ${p.deviceId} did not respond)`);
+    notify(p);
+  }
+  return expired;
 }
 
 /** Xác minh lại giao dịch PENDING đã có transactionId (vd khi lần xác minh trong callback bị lỗi mạng). */

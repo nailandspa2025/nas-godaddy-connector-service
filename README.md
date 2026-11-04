@@ -105,14 +105,17 @@ settings `BusinessId`, `StoreId`, `DeviceId`), tách riêng với cấu hình Po
 | `POST /api/v1/terminal/payments/:id/sync` | Xác minh lại với Poynt khi còn `PENDING` nhưng máy đã báo transactionId |
 | `POST /api/v1/terminal/payments/:id/callback` | Gửi lại callback cho nas-order-api |
 
-- Trạng thái: `PENDING` → `APPROVED` / `DECLINED` / `CANCELLED` / `FAILED` (gửi lệnh lỗi hoặc xác minh không khớp).
+- Trạng thái: `PENDING` → `APPROVED` / `DECLINED` / `CANCELLED` / `FAILED` (gửi lệnh lỗi hoặc xác minh không khớp) /
+  `EXPIRED` (máy không phản hồi gì trong `ttl` + 30s: lệnh đã bị Poynt bỏ, máy không hiện giao dịch). Server quét mỗi 30s
+  và báo `callbackUrl`. Giao dịch máy đã báo `RECEIVED`/`STARTED` thì không bị EXPIRED. Nếu sau đó máy vẫn báo về một
+  transaction hợp lệ, giao dịch `EXPIRED` vẫn được chốt sang `APPROVED`/`DECLINED` (và callback lại).
   `terminalStatus` = trạng thái máy báo (`RECEIVED`, `STARTED`, `PROCESSED`, `CANCELED`).
 - `deviceId` mặc định là DeviceId của store; phải là máy `TERMINAL` `ACTIVATED` trong đúng StoreId.
   Máy đang có sale/authorize `PENDING` (trong 10 phút) thì từ chối giao dịch mới (409) — huỷ hoặc chờ kết quả.
 - `requestId` là khoá idempotency: gửi lại cùng `requestId` trả giao dịch cũ (200), không gửi lệnh mới xuống máy.
 - Callback từ máy POS được xác thực bằng header `X-Terminal-Secret` riêng cho từng giao dịch (gửi qua `custom-http-header`);
   kết quả chỉ được chốt sau khi `GET /businesses/{id}/transactions/{txnId}` khớp referenceId, số tiền, device.
-- `ttl` (mặc định 60s) chỉ là thời gian Poynt giữ lệnh khi chưa giao được xuống máy, không phải thời gian chờ khách.
+- `ttl` (mặc định 60s, lưu thành `expiresAt`) chỉ là thời gian Poynt giữ lệnh khi chưa giao được xuống máy, không phải thời gian chờ khách.
 - Nếu máy không bao giờ gọi callback (mất mạng sau khi thanh toán), giao dịch giữ `PENDING`; kiểm tra trên máy/Poynt HQ.
 
 ## Cấu trúc

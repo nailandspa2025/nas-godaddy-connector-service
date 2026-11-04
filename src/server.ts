@@ -3,6 +3,7 @@ import { assertConfig, config } from './config';
 import { adminRouter, publicRouter } from './paylink/routes';
 import { poyntRouter } from './poynt/routes';
 import { terminalCallbackRouter, terminalRouter } from './terminal/routes';
+import { expireStale } from './terminal/service';
 import { getPoyntMerchant } from './catalog/client';
 import { envMerchant, getStores } from './poynt/service';
 import { PoyntError } from './poynt/client';
@@ -74,6 +75,8 @@ initDb()
         process.exit(1);
       }
       console.log(`nas-godaddy-connector-service listening on port ${config.port} (public: ${config.publicBaseUrl})`);
+      // Quét giao dịch máy POS không phản hồi → EXPIRED (để nas-order-api nhận được kết quả cuối)
+      setInterval(() => expireStale().catch((e) => console.error('[terminal] expire sweep failed:', e.message)), 30_000).unref();
     }),
   )
   .catch((e) => {

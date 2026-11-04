@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS terminal_payments (
   business_id         TEXT NOT NULL,
   store_id            TEXT NOT NULL,
   device_id           TEXT NOT NULL,
-  status              TEXT NOT NULL CHECK (status IN ('PENDING','APPROVED','DECLINED','CANCELLED','FAILED')),
+  status              TEXT NOT NULL,
   terminal_status     TEXT,
   transaction_id      TEXT,
   transaction_status  TEXT,
@@ -60,8 +60,14 @@ CREATE TABLE IF NOT EXISTS terminal_payments (
   callback_error      TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  completed_at        TIMESTAMPTZ
+  completed_at        TIMESTAMPTZ,
+  expires_at          TIMESTAMPTZ
 );
+-- Bảng cũ: thêm cột expires_at và cho phép trạng thái EXPIRED (idempotent, chạy mỗi lần khởi động).
+ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE terminal_payments DROP CONSTRAINT IF EXISTS terminal_payments_status_check;
+ALTER TABLE terminal_payments ADD CONSTRAINT terminal_payments_status_check
+  CHECK (status IN ('PENDING','APPROVED','DECLINED','CANCELLED','FAILED','EXPIRED'));
 CREATE INDEX IF NOT EXISTS terminal_payments_created_at_idx ON terminal_payments (created_at DESC);
 CREATE INDEX IF NOT EXISTS terminal_payments_reference_idx ON terminal_payments (reference);
 CREATE INDEX IF NOT EXISTS terminal_payments_device_status_idx ON terminal_payments (device_id, status);

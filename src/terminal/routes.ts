@@ -85,11 +85,13 @@ terminalRouter.post('/payments', h(async (req, res) => {
 }));
 
 terminalRouter.get('/payments', h(async (req, res) => {
+  await service.expireStale();
   const reference = typeof req.query.reference === 'string' ? req.query.reference : undefined;
   res.json((await store.list({ reference })).map(view));
 }));
 
 terminalRouter.get('/payments/:id', h(async (req, res) => {
+  await service.expireStale(String(req.params.id));
   const p = await store.get(String(req.params.id));
   if (!p) return res.status(404).json({ error: 'Terminal payment not found' });
   const children = await store.list({ parentId: p.id });
