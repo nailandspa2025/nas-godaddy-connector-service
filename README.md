@@ -90,6 +90,9 @@ xác minh → báo `callbackUrl` (nas-order-api) với body `{ "terminalPaymentI
 Yêu cầu: app có quyền **Cloud Messages – WRITE**; `PUBLIC_BASE_URL` là URL public mà máy POS gọi được
 (vd `https://<gateway>/godaddy`, gateway map `/godaddy/api/v1/*` → `/api/v1/*`). Server cảnh báo khi đang là localhost.
 
+Cấu hình máy POS theo store NAS lấy từ nas-catalog-api, phương thức **POS Payment** (`PaymentMethod.PosPayment = 11`,
+settings `BusinessId`, `StoreId`, `DeviceId`), tách riêng với cấu hình Poynt (`= 10`) của paylink.
+
 | API (cần `x-api-key`) | Mô tả |
 |---|---|
 | `GET /api/v1/terminal/devices?nasStoreId=` | Máy POS đã kích hoạt trong StoreId của store |

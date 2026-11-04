@@ -7,7 +7,9 @@
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3100" },
     { "key": "adminApiKey", "value": "" },
-    { "key": "paylinkId", "value": "" }
+    { "key": "paylinkId", "value": "" },
+    { "key": "nonce", "value": "" },
+    { "key": "paymentToken", "value": "" }
   ],
   "auth": {
     "type": "apikey",
@@ -67,7 +69,173 @@
     },
     {
       "name": "Admin - store/device",
-      "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/stores" }
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/stores" }
+    },
+    {
+      "name": "Poynt (admin)",
+      "description": "Gọi Poynt trực tiếp theo tài liệu ISV integration. Thêm ?nasStoreId= (hoặc nasStoreId trong body) để dùng cấu hình store NAS; không có thì dùng .env.",
+      "item": [
+        {
+          "name": "Business",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/poynt/business"
+          }
+        },
+        {
+          "name": "ACH khả dụng",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/poynt/ach"
+          }
+        },
+        {
+          "name": "Store/device",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/poynt/stores"
+          }
+        },
+        {
+          "name": "Apple Pay - đăng ký domain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/apple-pay/registration",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registerDomains\": [\n    \"portal.example.com\"\n  ],\n  \"unregisterDomains\": [],\n  \"merchantName\": \"NAS\",\n  \"merchantUrl\": \"https://portal.example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Apple Pay - domain association file",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/poynt/apple-pay/domain-association-file"
+          }
+        },
+        {
+          "name": "Tokenize nonce (Card on File)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/tokens",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nonce\": \"{{nonce}}\",\n  \"saveCardOnFile\": true,\n  \"cardAgreement\": {\n    \"agreedOn\": \"2026-02-18T19:16:33.287Z\",\n    \"status\": \"ACCEPTED\",\n    \"metadata\": {\n      \"lang\": \"EN\",\n      \"countryCode\": \"US\",\n      \"templateType\": \"CARD_ON_FILE\",\n      \"businessName\": \"Business Name\",\n      \"businessWebsite\": \"https://www.businesswebsite.com\",\n      \"businessPhone\": \"123-456-7890\"\n    },\n    \"email\": \"test@email.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Surcharge - eligible fees",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/eligible-fees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardToken\": \"{{paymentToken}}\",\n  \"amount\": 300\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Charge token + surcharge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/charges",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardToken\": \"{{paymentToken}}\",\n  \"amount\": 300,\n  \"transactionFees\": [\n    {\n      \"required\": false,\n      \"feeProgramType\": \"SURCHARGE\",\n      \"feeType\": \"PERCENTAGE\",\n      \"amount\": 28,\n      \"signature\": \"<từ eligible-fees>\",\n      \"feeProgramId\": \"<từ eligible-fees>\"\n    }\n  ],\n  \"requestId\": \"order-123-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Charge token COF (recurring)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/charges",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardToken\": \"{{paymentToken}}\",\n  \"amount\": 500,\n  \"intent\": \"RECURRING_COF_TXN\",\n  \"mit\": true,\n  \"requestId\": \"sub-123-2026-11\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Charge nonce (AUTHORIZE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/poynt/charges",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nonce\": \"{{nonce}}\",\n  \"amount\": 300,\n  \"action\": \"AUTHORIZE\",\n  \"receiptEmailAddress\": \"joe@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

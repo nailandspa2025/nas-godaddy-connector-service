@@ -8,7 +8,7 @@
  */
 import crypto from 'crypto';
 import { config } from '../config';
-import { getPoyntMerchant } from '../catalog/client';
+import { getPosMerchant } from '../catalog/client';
 import { deliverCallback } from '../paylink/callback';
 import { envMerchant, getActiveTerminals, getTransaction, Merchant, sendCloudMessage } from '../poynt/service';
 import * as store from './store';
@@ -22,7 +22,7 @@ const DEVICE_BUSY_MINUTES = 10;
 const httpError = (status: number, message: string, details?: unknown) => Object.assign(new Error(message), { status, details });
 
 export const merchantFor = (nasStoreId?: number): Promise<Merchant> =>
-  nasStoreId ? getPoyntMerchant(nasStoreId) : Promise.resolve(envMerchant());
+  nasStoreId ? getPosMerchant(nasStoreId) : Promise.resolve(envMerchant());
 
 const merchantOfPayment = (p: store.TerminalPayment): Merchant => ({ businessId: p.businessId, storeId: p.storeId, deviceId: p.deviceId });
 
