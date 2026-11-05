@@ -56,6 +56,9 @@ export async function getPoyntMerchant(nasStoreId: number, paymentMethod = POYNT
     storeId: getSetting(body.data.settings, 'StoreId'),
     deviceId: getSetting(body.data.settings, 'DeviceId'),
   };
+  // TimeoutSeconds (máy POS): số nguyên 10–86400, sai hoặc trống thì bỏ qua (dùng mặc định)
+  const timeout = Number(getSetting(body.data.settings, 'TimeoutSeconds'));
+  if (Number.isInteger(timeout) && timeout >= 10 && timeout <= 86400) value.timeoutSeconds = timeout;
   cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
