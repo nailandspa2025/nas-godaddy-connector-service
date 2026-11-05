@@ -171,14 +171,15 @@ export async function complete(
 /**
  * PENDING → EXPIRED cho giao dịch máy POS chưa hề phản hồi (không có terminalStatus/transactionId)
  * sau khi hết ttl + `graceSeconds`. Dòng cũ chưa có expires_at thì tính created_at + `defaultTtl`.
- * Giao dịch máy đã báo RECEIVED/STARTED (khách đang thao tác) thì không đụng tới.
+ * Hạn cứng: máy đã báo RECEIVED/STARTED nhưng quá hạn mà chưa có transaction cũng EXPIRED (máy được giải phóng).
  */
 export async function expireStale(graceSeconds: number, defaultTtl: number, id?: string): Promise<TerminalPayment[]> {
   const { rows } = await pool.query(
     `UPDATE terminal_payments
-     SET status = 'EXPIRED', error = 'Terminal did not respond before the request expired',
-         updated_at = now(), completed_at = now()
-     WHERE status = 'PENDING' AND terminal_status IS NULL AND transaction_id IS NULL
+     SET status = 'EXPIRED', updated_at = now(), completed_at = now(),
+         error = CASE WHEN terminal_status IS NULL THEN 'Terminal did not respond before the request expired'
+                      ELSE 'Payment was not completed on the terminal before it expired' END
+     WHERE status = 'PENDING' AND transaction_id IS NULL
        AND COALESCE(expires_at, created_at + make_interval(secs => $2)) + make_interval(secs => $1) < now()
        AND ($3::text IS NULL OR id = $3)
      RETURNING *`,
