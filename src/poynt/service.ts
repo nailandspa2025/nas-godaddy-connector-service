@@ -2,12 +2,7 @@ import { config } from '../config';
 import { poynt } from './client';
 
 /** Business Poynt mà app được cấp quyền; storeId/deviceId tuỳ chọn. */
-export type Merchant = {
-  businessId: string;
-  storeId: string | null;
-  deviceId: string | null;
-  timeoutSeconds?: number; // hạn giao dịch trên máy POS (setting TimeoutSeconds của store)
-};
+export type Merchant = { businessId: string; storeId: string | null; deviceId: string | null };
 
 /** Merchant mặc định từ .env (dùng khi paylink không gắn store NAS). */
 export function envMerchant(): Merchant {

@@ -36,6 +36,8 @@ ALTER TABLE paylinks ADD COLUMN IF NOT EXISTS booking_id INTEGER;
 -- Data cũ: lấy booking_id từ reference 'BOOKING-{id}' (chỉ dòng chưa có, chạy lại không ảnh hưởng).
 UPDATE paylinks SET booking_id = substring(reference from '^BOOKING-(\\d+)$')::int
   WHERE booking_id IS NULL AND reference ~ '^BOOKING-\\d+$';
+-- amount tính bằng cent (gửi Poynt); amount_usd chỉ để xem/đối chiếu, Postgres tự tính, không cần code ghi.
+ALTER TABLE paylinks ADD COLUMN IF NOT EXISTS amount_usd NUMERIC(12,2) GENERATED ALWAYS AS (amount / 100.0) STORED;
 
 -- Thanh toán trên máy POS (Payment Bridge / cloudMessages). Mỗi thao tác (sale, authorize, capture, void, refund)
 -- là một dòng; id cũng là referenceId gửi xuống máy. capture/void/refund trỏ về giao dịch gốc qua parent_id.
@@ -74,6 +76,8 @@ ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS booking_id INTEGER;
 UPDATE terminal_payments SET booking_id = substring(reference from '^BOOKING-(\\d+)$')::int
   WHERE booking_id IS NULL AND reference ~ '^BOOKING-\\d+$';
+-- amount tính bằng cent (gửi Poynt); amount_usd chỉ để xem/đối chiếu, Postgres tự tính, không cần code ghi.
+ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS amount_usd NUMERIC(12,2) GENERATED ALWAYS AS (amount / 100.0) STORED;
 ALTER TABLE terminal_payments DROP CONSTRAINT IF EXISTS terminal_payments_status_check;
 ALTER TABLE terminal_payments ADD CONSTRAINT terminal_payments_status_check
   CHECK (status IN ('PENDING','APPROVED','DECLINED','CANCELLED','FAILED','EXPIRED'));
