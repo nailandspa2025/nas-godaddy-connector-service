@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS paylinks (
   description      TEXT NOT NULL DEFAULT '',
   reference        TEXT,
   nas_store_id     INTEGER,
+  booking_id       INTEGER,
   status           TEXT NOT NULL CHECK (status IN ('ACTIVE','PAID','CANCELLED')),
   expires_at       TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -31,6 +32,10 @@ CREATE TABLE IF NOT EXISTS paylinks (
 );
 CREATE INDEX IF NOT EXISTS paylinks_created_at_idx ON paylinks (created_at DESC);
 CREATE INDEX IF NOT EXISTS paylinks_reference_idx ON paylinks (reference);
+ALTER TABLE paylinks ADD COLUMN IF NOT EXISTS booking_id INTEGER;
+-- Data cũ: lấy booking_id từ reference 'BOOKING-{id}' (chỉ dòng chưa có, chạy lại không ảnh hưởng).
+UPDATE paylinks SET booking_id = substring(reference from '^BOOKING-(\\d+)$')::int
+  WHERE booking_id IS NULL AND reference ~ '^BOOKING-\\d+$';
 
 -- Thanh toán trên máy POS (Payment Bridge / cloudMessages). Mỗi thao tác (sale, authorize, capture, void, refund)
 -- là một dòng; id cũng là referenceId gửi xuống máy. capture/void/refund trỏ về giao dịch gốc qua parent_id.
@@ -44,6 +49,7 @@ CREATE TABLE IF NOT EXISTS terminal_payments (
   reference           TEXT,
   notes               TEXT,
   nas_store_id        INTEGER,
+  booking_id          INTEGER,
   business_id         TEXT NOT NULL,
   store_id            TEXT NOT NULL,
   device_id           TEXT NOT NULL,
@@ -65,6 +71,9 @@ CREATE TABLE IF NOT EXISTS terminal_payments (
 );
 -- Bảng cũ: thêm cột expires_at và cho phép trạng thái EXPIRED (idempotent, chạy mỗi lần khởi động).
 ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE terminal_payments ADD COLUMN IF NOT EXISTS booking_id INTEGER;
+UPDATE terminal_payments SET booking_id = substring(reference from '^BOOKING-(\\d+)$')::int
+  WHERE booking_id IS NULL AND reference ~ '^BOOKING-\\d+$';
 ALTER TABLE terminal_payments DROP CONSTRAINT IF EXISTS terminal_payments_status_check;
 ALTER TABLE terminal_payments ADD CONSTRAINT terminal_payments_status_check
   CHECK (status IN ('PENDING','APPROVED','DECLINED','CANCELLED','FAILED','EXPIRED'));

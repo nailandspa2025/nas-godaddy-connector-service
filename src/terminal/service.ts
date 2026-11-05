@@ -69,6 +69,7 @@ export type StartInput = {
   amount: number;
   currency: string;
   nasStoreId?: number;
+  bookingId?: number;
   deviceId?: string;
   reference?: string;
   notes?: string;
@@ -93,7 +94,7 @@ export async function startPayment(input: StartInput) {
 
   const p = await store.create({
     action: input.action, amount: input.amount, currency: input.currency, businessId: m.businessId, storeId, deviceId,
-    nasStoreId: input.nasStoreId, reference: input.reference, notes: input.notes, requestId: input.requestId,
+    nasStoreId: input.nasStoreId, bookingId: input.bookingId, reference: input.reference, notes: input.notes, requestId: input.requestId,
     callbackUrl: input.callbackUrl, ttl,
   });
   const payment: Record<string, unknown> = {
@@ -139,7 +140,7 @@ export async function followUp(parentId: string, action: 'CAPTURE' | 'VOID' | 'R
 
   const p = await store.create({
     action, parentId: parent.id, amount: input.amount, currency: parent.currency, businessId: parent.businessId,
-    storeId: parent.storeId, deviceId: parent.deviceId, nasStoreId: parent.nasStoreId, reference: parent.reference,
+    storeId: parent.storeId, deviceId: parent.deviceId, nasStoreId: parent.nasStoreId, bookingId: parent.bookingId, reference: parent.reference,
     requestId: input.requestId, callbackUrl: input.callbackUrl ?? parent.callbackUrl, ttl,
   });
   const data: Record<string, unknown> = { action: action.toLowerCase(), transactionId: parent.transactionId, referenceId: p.id };

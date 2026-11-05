@@ -73,6 +73,7 @@ terminalRouter.post('/payments', h(async (req, res) => {
     amount: b.amount,
     currency,
     nasStoreId: optNasStoreId(b.nasStoreId),
+    bookingId: b.bookingId,
     deviceId: optString(b, 'deviceId'),
     reference: optString(b, 'reference'),
     notes: optString(b, 'notes', 500),

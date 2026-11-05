@@ -18,7 +18,7 @@ adminRouter.use(requireAdmin);
 
 /** Tạo paylink. amount tính bằng cents (1050 = $10.50). */
 adminRouter.post('/', async (req, res, next) => {
-  const { amount, currency = config.poynt.currency, description = '', reference, expiresAt, nasStoreId, callbackUrl } = req.body || {};
+  const { amount, currency = config.poynt.currency, description = '', reference, expiresAt, nasStoreId, bookingId, callbackUrl } = req.body || {};
   if (!Number.isInteger(amount) || amount <= 0) {
     return res.status(400).json({ error: 'amount must be a positive integer (cents)' });
   }
@@ -37,7 +37,7 @@ adminRouter.post('/', async (req, res, next) => {
   } catch (e) {
     return next(e);
   }
-  const p = await store.create({ amount, currency, description: String(description), reference, expiresAt, nasStoreId, callbackUrl: callbackUrl || undefined });
+  const p = await store.create({ amount, currency, description: String(description), reference, expiresAt, nasStoreId, bookingId, callbackUrl: callbackUrl || undefined });
   res.status(201).json(p);
 });
 

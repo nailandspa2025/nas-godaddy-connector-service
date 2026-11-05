@@ -11,6 +11,7 @@ export type Paylink = {
   description: string;
   reference?: string;
   nasStoreId?: number; // store NAS (catalog) — dùng lấy cấu hình Poynt; không có thì dùng .env
+  bookingId?: number; // booking bên nas-order-api
   status: PaylinkStatus;
   expiresAt?: string;
   createdAt: string;
@@ -30,6 +31,7 @@ const COLUMNS: Record<keyof Paylink, string> = {
   description: 'description',
   reference: 'reference',
   nasStoreId: 'nas_store_id',
+  bookingId: 'booking_id',
   status: 'status',
   expiresAt: 'expires_at',
   createdAt: 'created_at',
@@ -52,13 +54,13 @@ function toPaylink(row: any): Paylink {
   return p as Paylink;
 }
 
-export async function create(input: Pick<Paylink, 'amount' | 'currency' | 'description' | 'reference' | 'expiresAt' | 'nasStoreId' | 'callbackUrl'>): Promise<Paylink> {
+export async function create(input: Pick<Paylink, 'amount' | 'currency' | 'description' | 'reference' | 'expiresAt' | 'nasStoreId' | 'bookingId' | 'callbackUrl'>): Promise<Paylink> {
   const id = `pl_${crypto.randomBytes(9).toString('base64url')}`;
   const { rows } = await pool.query(
-    `INSERT INTO paylinks (id, amount, currency, description, reference, nas_store_id, status, expires_at, callback_url)
-     VALUES ($1,$2,$3,$4,$5,$6,'ACTIVE',$7,$8) RETURNING *`,
+    `INSERT INTO paylinks (id, amount, currency, description, reference, nas_store_id, booking_id, status, expires_at, callback_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'ACTIVE',$8,$9) RETURNING *`,
     [id, input.amount, input.currency, input.description, input.reference ?? null, input.nasStoreId ?? null,
-     input.expiresAt ?? null, input.callbackUrl ?? null],
+     input.bookingId ?? null, input.expiresAt ?? null, input.callbackUrl ?? null],
   );
   return toPaylink(rows[0]);
 }

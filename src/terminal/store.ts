@@ -15,6 +15,7 @@ export type TerminalPayment = {
   reference?: string;
   notes?: string;
   nasStoreId?: number;
+  bookingId?: number; // booking bên nas-order-api
   businessId: string;
   storeId: string;
   deviceId: string;
@@ -45,6 +46,7 @@ const COLUMNS: Record<keyof TerminalPayment, string> = {
   reference: 'reference',
   notes: 'notes',
   nasStoreId: 'nas_store_id',
+  bookingId: 'booking_id',
   businessId: 'business_id',
   storeId: 'store_id',
   deviceId: 'device_id',
@@ -82,7 +84,7 @@ export function publicView(p: TerminalPayment): Omit<TerminalPayment, 'callbackS
 }
 
 export type CreateInput = Pick<TerminalPayment, 'action' | 'currency' | 'businessId' | 'storeId' | 'deviceId'> &
-  Partial<Pick<TerminalPayment, 'requestId' | 'parentId' | 'amount' | 'reference' | 'notes' | 'nasStoreId' | 'callbackUrl'>> & {
+  Partial<Pick<TerminalPayment, 'requestId' | 'parentId' | 'amount' | 'reference' | 'notes' | 'nasStoreId' | 'bookingId' | 'callbackUrl'>> & {
     ttl: number; // giây; expires_at = now() + ttl
   };
 
@@ -91,10 +93,10 @@ export async function create(input: CreateInput): Promise<TerminalPayment> {
   const secret = crypto.randomBytes(24).toString('base64url');
   const { rows } = await pool.query(
     `INSERT INTO terminal_payments (id, request_id, parent_id, action, amount, currency, reference, notes, nas_store_id,
-       business_id, store_id, device_id, status, callback_secret, callback_url, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING',$13,$14, now() + make_interval(secs => $15)) RETURNING *`,
+       booking_id, business_id, store_id, device_id, status, callback_secret, callback_url, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING',$14,$15, now() + make_interval(secs => $16)) RETURNING *`,
     [id, input.requestId ?? null, input.parentId ?? null, input.action, input.amount ?? null, input.currency,
-     input.reference ?? null, input.notes ?? null, input.nasStoreId ?? null, input.businessId, input.storeId,
+     input.reference ?? null, input.notes ?? null, input.nasStoreId ?? null, input.bookingId ?? null, input.businessId, input.storeId,
      input.deviceId, secret, input.callbackUrl ?? null, input.ttl],
   );
   return toPayment(rows[0]);
