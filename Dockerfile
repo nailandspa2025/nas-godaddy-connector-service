@@ -14,9 +14,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 # config.ts nạp .env.${NODE_ENV} → .env.production (biến truyền qua --env-file/-e vẫn được ưu tiên)
+# .env.production chỉ chứa cấu hình không bí mật. Secrets (POYNT_APPLICATION_ID, ADMIN_API_KEY, DATABASE_URL)
+# truyền qua --env-file; private key Poynt mount qua volume ./keys (xem .github/workflows/deploy.yml)
 COPY .env.production ./
-COPY keys/private.pem ./keys/private.pem
-# Secrets không nằm trong image: .env qua --env-file, private key + data qua volume
 RUN mkdir -p keys data
 EXPOSE 6009
 CMD ["node", "dist/server.js"]

@@ -75,54 +75,42 @@ jobs:
           host: ${{ secrets.GCP_SERVER_HOST }}
           username: ${{ secrets.GCP_SERVER_USER }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          # .env bí mật và private key Poynt lấy từ GitHub Secrets (CONNECTOR_ENV, POYNT_PRIVATE_KEY_PEM),
+          # ghi ra server mỗi lần deploy — không nằm trong image/git. Thiếu secret thì dừng TRƯỚC khi đụng container cũ.
           script: |
+            set -e
+            APP_DIR="$HOME/nas/godaddy-connector"
+            mkdir -p "$APP_DIR/keys" "$APP_DIR/data"
+            umask 077
+            cat > "$APP_DIR/.env" <<'CONNECTOR_ENV_EOF'
+            ${{ secrets.CONNECTOR_ENV }}
+            CONNECTOR_ENV_EOF
+            cat > "$APP_DIR/keys/private.pem" <<'POYNT_KEY_EOF'
+            ${{ secrets.POYNT_PRIVATE_KEY_PEM }}
+            POYNT_KEY_EOF
+            # bỏ thụt đầu dòng do YAML heredoc
+            sed -i 's/^[[:space:]]*//' "$APP_DIR/.env" "$APP_DIR/keys/private.pem"
+            # chuẩn hoá cho docker --env-file: bỏ "export ", khoảng trắng quanh "=", nháy kép bao giá trị
+            sed -i -E 's/^export[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*/\1=/; s/^([A-Za-z_][A-Za-z0-9_]*)="(.*)"$/\1=\2/' "$APP_DIR/.env"
+            echo ".env keys: $(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' "$APP_DIR/.env" | tr -d '=' | tr '\n' ' ')"
+            fail() { echo "FAIL  $1"; exit 1; }
+            grep -q '^DATABASE_URL=postgres' "$APP_DIR/.env"        || fail "CONNECTOR_ENV thiếu DATABASE_URL=postgresql://..."
+            grep -q '^POYNT_APPLICATION_ID=urn:aid:' "$APP_DIR/.env" || fail "CONNECTOR_ENV thiếu POYNT_APPLICATION_ID=urn:aid:... (app production)"
+            grep -q '^ADMIN_API_KEY=.\{16,\}' "$APP_DIR/.env"       || fail "CONNECTOR_ENV thiếu ADMIN_API_KEY (phải trùng PAYLINK_API_KEY của nas-order-api)"
+            grep -q 'BEGIN .*PRIVATE KEY' "$APP_DIR/keys/private.pem" || fail "secret POYNT_PRIVATE_KEY_PEM trống hoặc sai định dạng"
+            chmod 644 "$APP_DIR/keys/private.pem"
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
             docker network inspect nas-net >/dev/null 2>&1 || docker network create nas-net
-            docker stop nas-godaddy-connector-service  || true
-            docker rm nas-godaddy-connector-service  || true
-            docker run -d --restart=always --pull=always --name nas-godaddy-connector-service --network nas-net -p 6009:6009 ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
-
-          # .env và private key Poynt lấy từ GitHub Secrets (CONNECTOR_ENV, POYNT_PRIVATE_KEY_PEM),
-          # ghi ra server mỗi lần deploy — không nằm trong image, không cần tạo tay trên server.
-          # script: |
-          #   set -e
-          #   APP_DIR="$HOME/nas/godaddy-connector"
-          #   mkdir -p "$APP_DIR/keys" "$APP_DIR/data"
-          #   umask 077
-          #   cat > "$APP_DIR/.env" <<'CONNECTOR_ENV_EOF'
-          #   ${{ secrets.CONNECTOR_ENV }}
-          #   CONNECTOR_ENV_EOF
-          #   cat > "$APP_DIR/keys/private.pem" <<'POYNT_KEY_EOF'
-          #   ${{ secrets.POYNT_PRIVATE_KEY_PEM }}
-          #   POYNT_KEY_EOF
-          #   # bỏ thụt đầu dòng (nếu có) do YAML
-          #   sed -i 's/^[[:space:]]*//' "$APP_DIR/.env" "$APP_DIR/keys/private.pem"
-          #   # DATABASE_URL có thể để trong CONNECTOR_ENV hoặc đặt thành secret riêng DATABASE_URL (ưu tiên secret riêng)
-          #   cat > "$APP_DIR/.db_url" <<'DB_URL_EOF'
-          #   ${{ secrets.DATABASE_URL }}
-          #   DB_URL_EOF
-          #   DB_URL=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' "$APP_DIR/.db_url" | grep -v '^$' | head -1 || true); rm -f "$APP_DIR/.db_url"
-          #   DB_URL=${DB_URL#DATABASE_URL=}
-          #   if [ -n "$DB_URL" ]; then sed -i '/^DATABASE_URL[[:space:]]*=/d' "$APP_DIR/.env"; printf 'DATABASE_URL=%s\n' "$DB_URL" >> "$APP_DIR/.env"; fi
-          #   # chuẩn hoá dòng .env cho docker --env-file: bỏ "export ", khoảng trắng quanh "=", dấu nháy kép bao giá trị
-          #   sed -i -E 's/^export[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*/\1=/; s/^([A-Za-z_][A-Za-z0-9_]*)="(.*)"$/\1=\2/' "$APP_DIR/.env"
-          #   echo ".env keys: $(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' "$APP_DIR/.env" | tr -d '=' | tr '\n' ' ')"
-          #   grep -q '^DATABASE_URL=postgres' "$APP_DIR/.env" \
-          #     || { echo "FAIL  .env thiếu DATABASE_URL=postgresql://... — thêm dòng đó vào secret CONNECTOR_ENV hoặc tạo secret DATABASE_URL"; exit 1; }
-          #   chmod 644 "$APP_DIR/keys/private.pem"
-          #   echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          #   docker pull ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
-          #   docker network inspect nas-net >/dev/null 2>&1 || docker network create nas-net
-          #   docker stop nas-godaddy-connector-service || true
-          #   docker rm nas-godaddy-connector-service || true
-          #   docker run -d --restart=always --name nas-godaddy-connector-service --network nas-net -p 6009:6009 \
-          #     --env-file "$APP_DIR/.env" \
-          #     -e PORT=6009 \
-          #     -e POYNT_PRIVATE_KEY_PATH=./keys/private.pem \
-          #     -v "$APP_DIR/keys:/app/keys:ro" \
-          #     -v "$APP_DIR/data:/app/data" \
-          #     ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
-          #   sleep 3
-          #   docker logs --tail 5 nas-godaddy-connector-service
-          #   curl -fsS localhost:6009/health && echo " <- health OK"
+            docker stop nas-godaddy-connector-service || true
+            docker rm nas-godaddy-connector-service || true
+            docker run -d --restart=always --name nas-godaddy-connector-service --network nas-net -p 6009:6009 \
+              --env-file "$APP_DIR/.env" \
+              -e PORT=6009 \
+              -e POYNT_PRIVATE_KEY_PATH=./keys/private.pem \
+              -v "$APP_DIR/keys:/app/keys:ro" \
+              -v "$APP_DIR/data:/app/data" \
+              ghcr.io/${{ github.repository_owner }}/nas-godaddy-connector-service:${{ github.sha }}
+            sleep 5
+            docker logs --tail 10 nas-godaddy-connector-service
+            curl -fsS localhost:6009/health && echo " <- health OK"

@@ -1,6 +1,8 @@
 node_modules/
 dist/
+keys/*
 !keys/.gitkeep
+.secrets/
 data/*
 !data/.gitkeep
 postman/nas-paylink.postman_collection.json
