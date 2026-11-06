@@ -14,7 +14,7 @@ import { envMerchant, getActiveTerminals, getTransaction, Merchant, sendCloudMes
 import * as store from './store';
 
 export const SECRET_HEADER = 'X-Terminal-Secret';
-/** Thời gian (giây) Poynt giữ lệnh khi chưa giao được xuống máy. */
+/** Hạn (giây) của giao dịch trên máy khi không truyền ttl: quá ttl + grace mà chưa có transaction thì EXPIRED. */
 export const DEFAULT_TTL = 60;
 /** Chờ thêm (giây) sau ttl trước khi coi là EXPIRED, để kịp nhận RECEIVED nếu máy nhận lệnh sát hạn. */
 export const EXPIRE_GRACE_SECONDS = 30;
@@ -81,12 +81,13 @@ export type StartInput = {
 
 /** Gửi sale/authorize xuống máy POS. Trả { payment, created } — created=false khi requestId đã tồn tại. */
 export async function startPayment(input: StartInput) {
-  const ttl = input.ttl ?? DEFAULT_TTL;
   if (input.requestId) {
     const existing = await store.getByRequestId(input.requestId);
     if (existing) return { payment: existing, created: false };
   }
   const m = await merchantFor(input.nasStoreId);
+  // Hạn giao dịch: ttl truyền vào > TimeoutSeconds của store (catalog) > mặc định
+  const ttl = input.ttl ?? m.timeoutSeconds ?? DEFAULT_TTL;
   const { storeId, deviceId } = await resolveDevice(m, input.deviceId);
   await expireStale();
   const busy = await store.findPendingOnDevice(deviceId, DEVICE_BUSY_MINUTES);
@@ -268,7 +269,13 @@ export async function processCallback(p: store.TerminalPayment, body: any): Prom
 export async function expireStale(id?: string): Promise<store.TerminalPayment[]> {
   const expired = await store.expireStale(EXPIRE_GRACE_SECONDS, DEFAULT_TTL, id);
   for (const p of expired) {
-    console.log(`[terminal] ${p.id} expired (device ${p.deviceId} did not respond)`);
+    console.log(`[terminal] ${p.id} expired on device ${p.deviceId} (terminalStatus ${p.terminalStatus ?? 'none'})`);
+    // Máy đã nhận lệnh: gửi huỷ để màn hình thanh toán đóng lại, máy nhận được giao dịch mới.
+    // Nếu khách vẫn kịp trả, callback có transaction sẽ chốt lại từ EXPIRED (fromExpired).
+    if (p.terminalStatus) {
+      sendCloudMessage({ businessId: p.businessId, storeId: p.storeId, deviceId: p.deviceId, ttl: 30, data: { action: 'cancelPayment' } })
+        .catch((e) => console.error(`[terminal] cancel ${p.id} on expiry failed: ${e.message}`));
+    }
     notify(p);
   }
   return expired;
